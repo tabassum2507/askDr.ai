@@ -38,27 +38,66 @@ const SECTIONS = [
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
 
-async function embed(text) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+const GEMINI_KEYS = [
+  process.env.GEMINI_API_KEY,
+  process.env.GEMINI_API_KEY_2,
+].filter(Boolean);
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'models/text-embedding-004',
-        content: { parts: [{ text }] },
-      }),
+let currentKeyIndex = 0;
+
+async function embed(text) {
+  for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt++) {
+    const key = GEMINI_KEYS[(currentKeyIndex + attempt) % GEMINI_KEYS.length];
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'models/gemini-embedding-001',
+            content: { parts: [{ text }] },
+            outputDimensionality: 768,
+          }),
+        }
+      );
+
+      if (response.status === 429) {
+        console.log(`Key ${(currentKeyIndex + attempt) % GEMINI_KEYS.length + 1} rate limited, trying next...`);
+        continue;
+      }
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Gemini embedding error ${response.status}: ${err}`);
+      }
+
+      const data = await response.json();
+      currentKeyIndex = (currentKeyIndex + attempt) % GEMINI_KEYS.length;
+      return data.embedding.values;
+    } catch (err) {
+      if (attempt === GEMINI_KEYS.length - 1) throw err;
     }
-  );
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini embedding error ${res.status}: ${err}`);
   }
-  const data = await res.json();
-  return data.embedding.values;
+  throw new Error('All Gemini API keys exhausted');
+}
+
+async function embedWithRetry(text, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await embed(text);
+      await new Promise(r => setTimeout(r, 1500));
+      return result;
+    } catch (err) {
+      if (err.message.includes('429') && attempt < maxRetries - 1) {
+        const waitTime = (attempt + 1) * 35000;
+        console.log(`  Rate limited, waiting ${waitTime / 1000}s...`);
+        await new Promise(r => setTimeout(r, waitTime));
+      } else {
+        throw err;
+      }
+    }
+  }
 }
 
 function chunkText(text) {
@@ -85,6 +124,17 @@ async function fetchDrugLabel(drug) {
 }
 
 async function ingestDrug(drug) {
+  // Skip if already ingested
+  const { count } = await supabase
+    .from('documents')
+    .select('*', { count: 'exact', head: true })
+    .eq('metadata->>drug', drug);
+
+  if (count > 0) {
+    console.log(`  Skipping ${drug} — already ingested (${count} chunks)`);
+    return;
+  }
+
   console.log(`\nProcessing: ${drug}`);
   const label = await fetchDrugLabel(drug);
   if (!label) return;
@@ -100,7 +150,7 @@ async function ingestDrug(drug) {
     const chunks = chunkText(text);
 
     for (const chunk of chunks) {
-      const embedding = await embed(chunk);
+      const embedding = await embedWithRetry(chunk);
       rows.push({
         content: chunk,
         embedding,
@@ -129,8 +179,6 @@ async function ingestDrug(drug) {
 
 async function main() {
   console.log('Starting ingestion...');
-  await supabase.from('documents').delete().neq('id', 0);
-  console.log('Cleared old data');
   for (const drug of DRUGS) {
     await ingestDrug(drug);
   }

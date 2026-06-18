@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import { retrieve } from '@/lib/retrieve';
+import { lookupDrug } from '@/lib/openfda-lookup';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -82,6 +83,19 @@ ${FORMATTING}
 Context:
 ${contextBlock}`;
 
+const OPENFDA_SYSTEM_PROMPT = (contextBlock: string) =>
+  `You are a health information assistant. Answer the user's question using ONLY the official drug label information provided below.
+
+Rules:
+- NEVER recommend this medicine as a treatment for any condition. Your role is to inform, not prescribe.
+- Never suggest someone start, stop, or change a medication.
+- Always end your answer with: "Please consult your doctor before taking any medication."
+- If the label does not contain enough information to answer, say so clearly.
+${FORMATTING}
+
+Drug Label (source: openFDA):
+${contextBlock}`;
+
 // ── Shared RAG helper ─────────────────────────────────────────────────────────
 
 interface RagResult {
@@ -127,6 +141,30 @@ async function ragOrFallback(
     }));
 
     return { answer, citations, source: 'rag' };
+  }
+
+  // For medicines queries with no strong RAG match, try a live openFDA lookup
+  // before giving up and falling back to general LLM.
+  if (category === 'medicines' && (docs.length === 0 || docs[0].similarity < 0.35)) {
+    const fdaResult = await lookupDrug(userMessage).catch(() => null);
+
+    if (fdaResult) {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: OPENFDA_SYSTEM_PROMPT(fdaResult.content) },
+          { role: 'user', content: userMessage },
+        ],
+      });
+
+      const answer = completion.choices[0]?.message?.content ?? '';
+      return {
+        answer,
+        citations: [{ drug: fdaResult.name, section: 'Live lookup', source: 'openFDA (live)', similarity: 1 }],
+        source: 'openfda_live',
+      };
+    }
   }
 
   // No results in index — fall back to general knowledge
