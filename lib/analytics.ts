@@ -5,20 +5,32 @@ let initialized = false;
 export function initAnalytics() {
   if (initialized || typeof window === 'undefined') return;
 
-  mixpanel.init(process.env.NEXT_PUBLIC_MIXPANEL_TOKEN!, {
-    track_pageview: true,
-    persistence: 'localStorage',
-    ignore_dnt: false,
-  });
+  const token = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
+  if (!token) {
+    console.warn('Mixpanel token not found');
+    return;
+  }
 
-  initialized = true;
+  try {
+    mixpanel.init(token, {
+      track_pageview: false,
+      persistence: 'localStorage',
+      ignore_dnt: false,
+      loaded: () => {
+        initialized = true;
+      },
+    });
+    initialized = true;
+  } catch (e) {
+    console.error('Mixpanel init failed:', e);
+  }
 }
 
-export function track(event: string, properties?: Record<string, unknown>) {
-  if (typeof window === 'undefined') return;
+export function track(event: string, properties?: Record<string, any>) {
+  if (typeof window === 'undefined' || !initialized) return;
   try {
     mixpanel.track(event, properties);
-  } catch (e) {
-    console.error('Analytics error:', e);
+  } catch {
+    // silently fail — analytics should never break the app
   }
 }
