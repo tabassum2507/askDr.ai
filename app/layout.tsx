@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import AnalyticsProvider from "@/components/AnalyticsProvider";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -31,7 +32,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${fraunces.variable} ${plusJakarta.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col antialiased" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col antialiased" suppressHydrationWarning>
+        <AnalyticsProvider />
+        {children}
+      </body>
     </html>
   );
 }

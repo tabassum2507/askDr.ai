@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, FormEvent, Suspense, ChangeEvent } from 'react';
+import { track } from '@/lib/analytics';
 import ReactMarkdown from 'react-markdown';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -205,6 +206,7 @@ function ChatInterface() {
     setPendingImage(null);
     setImageError('');
     setLoading(true);
+    track('Message Sent', { category: intent, message_length: text.length, has_image: !!image });
 
     setMessages((prev) => [
       ...prev,
@@ -213,6 +215,8 @@ function ChatInterface() {
 
     let finalContent = '';
     let completedWithEmergency = false;
+    let capturedSource = 'general';
+    let capturedCitationsCount = 0;
 
     try {
       const res = await fetch('/api/chat', {
@@ -258,20 +262,30 @@ function ChatInterface() {
           try { parsed = JSON.parse(line); } catch { continue; }
 
           switch (parsed.type) {
-            case 'citations':
+            case 'citations': {
+              const citationsArr = (parsed.citations as Citation[]) ?? [];
+              capturedSource = (parsed.source as string) ?? 'general';
+              capturedCitationsCount = citationsArr.length;
+              if (image) {
+                track('Image Uploaded', { identified_medicine: (parsed.extractedMedicine as string) || 'unidentified' });
+              } else if (intent === 'medicines') {
+                const drugName = citationsArr[0]?.drug ?? '';
+                if (drugName) track('Medicine Searched', { drug_name: drugName });
+              }
               setMessages((prev) => {
                 const next = [...prev];
                 const last = next[next.length - 1];
                 if (last?.role === 'assistant' && last.isStreaming) {
                   next[next.length - 1] = {
                     ...last,
-                    citations: (parsed.citations as Citation[]) ?? [],
+                    citations: citationsArr,
                     extractedMedicine: parsed.extractedMedicine as string | undefined,
                   };
                 }
                 return next;
               });
               break;
+            }
 
             case 'text': {
               const chunk = (parsed.text as string) ?? '';
@@ -289,6 +303,16 @@ function ChatInterface() {
 
             case 'done':
               completedWithEmergency = (parsed.emergency as boolean) ?? false;
+              if (completedWithEmergency) {
+                track('Emergency Triggered', { category: intent });
+              } else {
+                track('Response Received', {
+                  category: intent,
+                  source: capturedSource,
+                  citations_count: capturedCitationsCount,
+                  response_length: finalContent.length,
+                });
+              }
               setMessages((prev) => {
                 const next = [...prev];
                 const last = next[next.length - 1];
@@ -361,6 +385,7 @@ function ChatInterface() {
     try {
       await navigator.clipboard.writeText(stripMarkdown(content));
       setCopiedIndex(index);
+      track('Copy Answer', { category: intent });
       setTimeout(() => setCopiedIndex(null), 2000);
     } catch {
       // clipboard not available
@@ -525,7 +550,7 @@ function ChatInterface() {
                 <button
                   key={q}
                   type="button"
-                  onClick={() => sendText(q)}
+                  onClick={() => { track('Suggested Question Clicked', { category: intent, question: q }); sendText(q); }}
                   disabled={loading}
                   className="cursor-pointer rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm text-teal-700 transition hover:bg-teal-100 disabled:opacity-50"
                 >

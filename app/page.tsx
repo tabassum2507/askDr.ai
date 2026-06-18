@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
+import { track } from '@/lib/analytics';
 import {
   Activity,
   Leaf,
@@ -108,6 +110,10 @@ const TRUST_ITEMS = ['openFDA drug labels', 'MedlinePlus guidelines', 'Evidence-
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
+  useEffect(() => {
+    track('Page View', { page: 'home' });
+  }, []);
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#F0FDFA]">
 
@@ -229,6 +235,7 @@ export default function Home() {
                 <Link
                   key={slug}
                   href={`/chat?intent=${slug}`}
+                  onClick={() => track('Category Selected', { category: slug })}
                   className={[
                     'group relative flex flex-col overflow-hidden rounded-2xl border border-teal-100 bg-white p-5',
                     'shadow-[0_1px_4px_rgba(13,148,136,0.06),0_4px_16px_rgba(13,148,136,0.04)]',
