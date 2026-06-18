@@ -4,7 +4,7 @@ import { embed } from './embed';
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { realtime: { transport: null }, auth: { persistSession: false } }
+  { auth: { persistSession: false } }
 );
 
 export interface DocumentMatch {
