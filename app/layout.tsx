@@ -28,6 +28,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${fraunces.variable} ${plusJakarta.variable} h-full`}
     >
       <body className="min-h-full flex flex-col antialiased" suppressHydrationWarning>{children}</body>

@@ -6,6 +6,7 @@ import { retrieve } from '@/lib/retrieve';
 import { lookupDrug } from '@/lib/openfda-lookup';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const enc = new TextEncoder();
 
 // ── Safety ────────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,8 @@ const RED_FLAG_PATTERNS = [
   /call\s*911/i,
 ];
 
-const EMERGENCY_RESPONSE = {
-  answer:
-    'This sounds like a medical emergency. Please call 911 (or your local emergency number) immediately or go to the nearest emergency room. Do not wait.',
-  citations: [],
-  emergency: true,
-};
+const EMERGENCY_TEXT =
+  'This sounds like a medical emergency. Please call 911 (or your local emergency number) immediately or go to the nearest emergency room. Do not wait.';
 
 function isEmergency(message: string): boolean {
   return RED_FLAG_PATTERNS.some((p) => p.test(message));
@@ -70,49 +67,50 @@ Rules:
 - End every response with: "Please consult a healthcare professional for personalized advice."
 ${FORMATTING}`;
 
-const RAG_SYSTEM_PROMPT = (contextBlock: string) =>
-  `You are a health information assistant. Answer the user's question using ONLY the context provided below. Do not use outside knowledge.
+const RAG_SYSTEM_PROMPT = `You are a health information assistant. Answer the user's question using ONLY the context provided in the message. Do not use outside knowledge.
 
 Rules:
 - Never diagnose a condition.
 - Never recommend starting, stopping, or changing a medication.
 - Always end your answer with: "Please confirm this with your doctor or pharmacist before taking any action."
 - If the context does not contain enough information to answer, say: "I don't have enough information in my sources to answer that. Please consult your doctor."
-${FORMATTING}
+${FORMATTING}`;
 
-Context:
-${contextBlock}`;
-
-const OPENFDA_SYSTEM_PROMPT = (contextBlock: string) =>
-  `You are a health information assistant. Answer the user's question using ONLY the official drug label information provided below.
+const OPENFDA_SYSTEM_PROMPT = `You are a health information assistant. Answer the user's question using ONLY the official drug label information provided in the message.
 
 Rules:
 - NEVER recommend this medicine as a treatment for any condition. Your role is to inform, not prescribe.
 - Never suggest someone start, stop, or change a medication.
 - Always end your answer with: "Please consult your doctor before taking any medication."
 - If the label does not contain enough information to answer, say so clearly.
-${FORMATTING}
+${FORMATTING}`;
 
-Drug Label (source: openFDA):
-${contextBlock}`;
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ── Shared RAG helper ─────────────────────────────────────────────────────────
-
-interface RagResult {
-  answer: string;
-  citations: { drug: string; section: string; source: string; similarity: number }[];
-  source: string;
+interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-async function ragOrFallback(
+type Citation = { drug: string; section: string; source: string; similarity: number };
+
+interface GroqCallPrep {
+  citations: Citation[];
+  source: string;
+  groqMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  temperature: number;
+  extractedMedicine?: string;
+}
+
+// ── Context preparation ───────────────────────────────────────────────────────
+
+async function prepareContext(
   userMessage: string,
-  category: string | undefined
-): Promise<RagResult> {
+  category: string | undefined,
+  history: HistoryMessage[]
+): Promise<GroqCallPrep> {
   const docs = await retrieve(userMessage, 5, category);
 
-  // Only use RAG if the best match is genuinely relevant (≥ 0.5 similarity).
-  // Below this, the retrieved chunks are about unrelated topics and the LLM
-  // will just say "I don't have enough info" — so fall through to general LLM.
   if (docs.length > 0 && docs[0].similarity >= 0.5) {
     const contextBlock = docs
       .map((d, i) => {
@@ -123,111 +121,72 @@ async function ragOrFallback(
       })
       .join('\n\n');
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    return {
+      citations: docs.map((d) => ({
+        drug: d.metadata.drug ?? d.metadata.topic ?? 'Health Topic',
+        section: d.metadata.section ?? d.metadata.searchTerm ?? '',
+        source: d.metadata.source,
+        similarity: Math.round(d.similarity * 1000) / 1000,
+      })),
+      source: 'rag',
       temperature: 0.2,
-      messages: [
-        { role: 'system', content: RAG_SYSTEM_PROMPT(contextBlock) },
-        { role: 'user', content: userMessage },
+      groqMessages: [
+        { role: 'system', content: RAG_SYSTEM_PROMPT },
+        ...history.slice(-6),
+        { role: 'user', content: `Context from sources:\n\n${contextBlock}\n\nQuestion: ${userMessage}` },
       ],
-    });
-
-    const answer = completion.choices[0]?.message?.content ?? '';
-    const citations = docs.map((d) => ({
-      drug: d.metadata.drug ?? d.metadata.topic ?? 'Health Topic',
-      section: d.metadata.section ?? d.metadata.searchTerm ?? '',
-      source: d.metadata.source,
-      similarity: Math.round(d.similarity * 1000) / 1000,
-    }));
-
-    return { answer, citations, source: 'rag' };
+    };
   }
 
-  // For medicines queries with no strong RAG match, try a live openFDA lookup
-  // before giving up and falling back to general LLM.
   if (category === 'medicines' && (docs.length === 0 || docs[0].similarity < 0.35)) {
     const fdaResult = await lookupDrug(userMessage).catch(() => null);
-
     if (fdaResult) {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.2,
-        messages: [
-          { role: 'system', content: OPENFDA_SYSTEM_PROMPT(fdaResult.content) },
-          { role: 'user', content: userMessage },
-        ],
-      });
-
-      const answer = completion.choices[0]?.message?.content ?? '';
       return {
-        answer,
         citations: [{ drug: fdaResult.name, section: 'Live lookup', source: 'openFDA (live)', similarity: 1 }],
         source: 'openfda_live',
+        temperature: 0.2,
+        groqMessages: [
+          { role: 'system', content: OPENFDA_SYSTEM_PROMPT },
+          ...history.slice(-6),
+          { role: 'user', content: `Context from sources:\n\n${fdaResult.context}\n\nQuestion: ${userMessage}` },
+        ],
       };
     }
   }
 
-  // No results in index — fall back to general knowledge
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+  return {
+    citations: [],
+    source: 'general',
     temperature: 0.4,
-    messages: [
+    groqMessages: [
       { role: 'system', content: GENERAL_SYSTEM_PROMPT },
+      ...history.slice(-6),
       { role: 'user', content: userMessage },
     ],
-  });
-
-  const answer = completion.choices[0]?.message?.content ?? '';
-  return { answer, citations: [], source: 'general' };
+  };
 }
 
-// ── Vision → RAG pipeline ─────────────────────────────────────────────────────
+// ── Static streaming helper (no LLM) ─────────────────────────────────────────
 
-async function handleImageQuery(
-  imageBase64: string,
-  userQuestion: string
-): Promise<RagResult & { extractedMedicine?: string }> {
-  let extractedMedicine = '';
-  try {
-    const visionRes = await groq.chat.completions.create({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      temperature: 0.1,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: imageBase64 } },
-            {
-              type: 'text',
-              text: 'Look at this medicine label or packaging image. Read all visible text carefully. Extract and return ONLY: the brand name, generic name, strength/dosage, and form (tablet/injection/etc). Be concise — one line only. Example: "Busulfan (ivBusulfex) 6 mg/mL injection".',
-            },
-          ],
-        },
-      ],
-    });
-    extractedMedicine = visionRes.choices[0]?.message?.content?.trim() ?? '';
-  } catch (err) {
-    console.error('Vision model error:', err);
-    return {
-      answer: "I couldn't read the medicine label clearly. Please try a clearer photo or type the medicine name directly.",
-      citations: [],
-      source: 'vision_error',
-    };
-  }
-
-  if (!extractedMedicine) {
-    return {
-      answer: "I couldn't identify a medicine in this image. Please try a clearer photo or type the medicine name directly.",
-      citations: [],
-      source: 'vision_error',
-    };
-  }
-
-  const question = userQuestion.trim() || 'What is this medicine and what is it used for?';
-  const combinedQuery = `Regarding ${extractedMedicine}: ${question}`;
-
-  const data = await ragOrFallback(combinedQuery, 'medicines');
-  return { ...data, extractedMedicine };
+function streamStaticText(
+  text: string,
+  citations: Citation[],
+  source: string,
+  opts: { emergency?: boolean; extractedMedicine?: string } = {}
+): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc.encode(
+          JSON.stringify({ type: 'citations', citations, source, extractedMedicine: opts.extractedMedicine }) + '\n'
+        ));
+        controller.enqueue(enc.encode(JSON.stringify({ type: 'text', text }) + '\n'));
+        controller.enqueue(enc.encode(JSON.stringify({ type: 'done', emergency: opts.emergency ?? false }) + '\n'));
+        controller.close();
+      },
+    }),
+    { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+  );
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -238,26 +197,99 @@ export async function POST(req: NextRequest) {
     const message: string = reqBody?.message ?? '';
     const intent: string = reqBody?.intent ?? 'basic-health';
     const image: string | null = reqBody?.image ?? null;
+    const history: HistoryMessage[] = Array.isArray(reqBody?.history) ? reqBody.history : [];
 
     if (!message.trim() && !image) {
       return NextResponse.json({ error: 'message or image is required' }, { status: 400 });
     }
 
     if (isEmergency(message)) {
-      return NextResponse.json(EMERGENCY_RESPONSE);
+      return streamStaticText(EMERGENCY_TEXT, [], 'emergency', { emergency: true });
     }
+
+    let prep: GroqCallPrep;
 
     if (image) {
-      const data = await handleImageQuery(image, message);
-      return NextResponse.json(data);
+      // Vision extraction is non-streaming — we need the result before we can query
+      let extractedMedicine = '';
+      try {
+        const visionRes = await groq.chat.completions.create({
+          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          temperature: 0.1,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: image } },
+                {
+                  type: 'text',
+                  text: 'Look at this medicine label or packaging image. Read all visible text carefully. Extract and return ONLY: the brand name, generic name, strength/dosage, and form (tablet/injection/etc). Be concise — one line only. Example: "Busulfan (ivBusulfex) 6 mg/mL injection".',
+                },
+              ],
+            },
+          ],
+        });
+        extractedMedicine = visionRes.choices[0]?.message?.content?.trim() ?? '';
+      } catch (err) {
+        console.error('Vision model error:', err);
+      }
+
+      if (!extractedMedicine) {
+        return streamStaticText(
+          "I couldn't read the medicine label clearly. Please try a clearer photo or type the medicine name directly.",
+          [],
+          'vision_error'
+        );
+      }
+
+      const question = message.trim() || 'What is this medicine and what is it used for?';
+      prep = await prepareContext(`Regarding ${extractedMedicine}: ${question}`, 'medicines', history);
+      prep = { ...prep, extractedMedicine };
+    } else {
+      prep = await prepareContext(message, INTENT_CATEGORY[intent], history);
     }
 
-    const category = INTENT_CATEGORY[intent];
-    const data = await ragOrFallback(message, category);
-    return NextResponse.json(data);
+    const groqStream = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      temperature: prep.temperature,
+      stream: true,
+      messages: prep.groqMessages,
+    });
+
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          try {
+            controller.enqueue(enc.encode(
+              JSON.stringify({
+                type: 'citations',
+                citations: prep.citations,
+                source: prep.source,
+                extractedMedicine: prep.extractedMedicine,
+              }) + '\n'
+            ));
+
+            for await (const chunk of groqStream) {
+              const text = chunk.choices[0]?.delta?.content ?? '';
+              if (text) {
+                controller.enqueue(enc.encode(JSON.stringify({ type: 'text', text }) + '\n'));
+              }
+            }
+
+            controller.enqueue(enc.encode(JSON.stringify({ type: 'done' }) + '\n'));
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : 'Streaming error';
+            controller.enqueue(enc.encode(JSON.stringify({ type: 'error', message: errMsg }) + '\n'));
+          } finally {
+            controller.close();
+          }
+        },
+      }),
+      { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+    );
   } catch (err) {
     console.error('Chat API error:', err);
     const message = err instanceof Error ? err.message : 'Internal server error';
-    return NextResponse.json({ error: message, answer: `Sorry, something went wrong: ${message}`, citations: [] }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -15,6 +15,9 @@ import {
   Ribbon,
   ImageIcon,
   X,
+  Copy,
+  Check,
+  Share2,
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -88,16 +91,65 @@ interface Citation {
   similarity: number;
 }
 
+interface HistoryEntry {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   citations?: Citation[];
   emergency?: boolean;
-  imagePreview?: string;       // data URL shown inside the user bubble
-  extractedMedicine?: string;  // shown as a badge above the assistant answer
+  imagePreview?: string;
+  extractedMedicine?: string;
+  isStreaming?: boolean;
 }
 
 const MAX_IMAGE_MB = 5;
+
+const SUGGESTED_QUESTIONS: Record<string, string[]> = {
+  'medicines': [
+    'What are the side effects of metformin?',
+    'Can I take ibuprofen with atorvastatin?',
+    'What is omeprazole used for?',
+  ],
+  'home-remedies': [
+    'Home remedy for sore throat',
+    'How to treat a minor burn at home?',
+    'Natural ways to reduce fever',
+  ],
+  'mental-health': [
+    'How to manage anxiety?',
+    'What are signs of depression?',
+    'Tips for better sleep',
+  ],
+  'female-health': [
+    'What are symptoms of PCOS?',
+    'What happens during menopause?',
+    'Is irregular period normal?',
+  ],
+  'basic-health': [
+    'When should I see a doctor for fever?',
+    'How to prevent dehydration?',
+    'What is normal blood pressure?',
+  ],
+  'diet': [
+    'What foods are good for heart health?',
+    'How much water should I drink daily?',
+    'Best sources of protein',
+  ],
+  'report-assistance': [
+    'What does high cholesterol mean?',
+    'What is HbA1c and normal range?',
+    'Explain CBC blood test results',
+  ],
+  'cancer-health': [
+    'What are early signs of cancer?',
+    'How often should I get screened?',
+    'What is chemotherapy?',
+  ],
+};
 
 function ChatInterface() {
   const router = useRouter();
@@ -109,6 +161,7 @@ function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: welcome },
   ]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingImage, setPendingImage] = useState<{
@@ -116,6 +169,7 @@ function ChatInterface() {
     preview: string; // base64 data URL
   } | null>(null);
   const [imageError, setImageError] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -144,12 +198,9 @@ function ChatInterface() {
     reader.readAsDataURL(file);
   }
 
-  async function sendMessage(e: FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if ((!text && !pendingImage) || loading) return;
+  async function sendText(text: string, image: typeof pendingImage = null) {
+    if ((!text && !image) || loading) return;
 
-    const currentImage = pendingImage;
     setInput('');
     setPendingImage(null);
     setImageError('');
@@ -157,12 +208,11 @@ function ChatInterface() {
 
     setMessages((prev) => [
       ...prev,
-      {
-        role: 'user',
-        content: text,
-        imagePreview: currentImage?.preview,
-      },
+      { role: 'user', content: text, imagePreview: image?.preview },
     ]);
+
+    let finalContent = '';
+    let completedWithEmergency = false;
 
     try {
       const res = await fetch('/api/chat', {
@@ -171,40 +221,172 @@ function ChatInterface() {
         body: JSON.stringify({
           message: text,
           intent,
-          ...(currentImage ? { image: currentImage.preview } : {}),
+          history,
+          ...(image ? { image: image.preview } : {}),
         }),
       });
 
-      let data: Record<string, unknown> = {};
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error(`Server returned ${res.status} (non-JSON response)`);
-      }
-
       if (!res.ok) {
-        throw new Error((data.error as string) || `Request failed with status ${res.status}`);
+        let errMsg = `Request failed with status ${res.status}`;
+        try { const d = await res.json(); errMsg = (d.error as string) || errMsg; } catch { /* ignore */ }
+        throw new Error(errMsg);
       }
 
+      if (!res.body) throw new Error('No response body');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      // Add the streaming placeholder immediately so the dots hide
       setMessages((prev) => [
         ...prev,
-        {
-          role: 'assistant',
-          content: (data.answer as string) ?? '',
-          citations: data.citations as Citation[] | undefined,
-          emergency: data.emergency as boolean | undefined,
-          extractedMedicine: data.extractedMedicine as string | undefined,
-        },
+        { role: 'assistant' as const, content: '', citations: [], isStreaming: true },
       ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let parsed: Record<string, unknown>;
+          try { parsed = JSON.parse(line); } catch { continue; }
+
+          switch (parsed.type) {
+            case 'citations':
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                  next[next.length - 1] = {
+                    ...last,
+                    citations: (parsed.citations as Citation[]) ?? [],
+                    extractedMedicine: parsed.extractedMedicine as string | undefined,
+                  };
+                }
+                return next;
+              });
+              break;
+
+            case 'text': {
+              const chunk = (parsed.text as string) ?? '';
+              finalContent += chunk;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                  next[next.length - 1] = { ...last, content: last.content + chunk };
+                }
+                return next;
+              });
+              break;
+            }
+
+            case 'done':
+              completedWithEmergency = (parsed.emergency as boolean) ?? false;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                  next[next.length - 1] = { ...last, isStreaming: false, emergency: completedWithEmergency };
+                }
+                return next;
+              });
+              break;
+
+            case 'error':
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                  next[next.length - 1] = {
+                    role: 'assistant',
+                    content: `Error: ${(parsed.message as string) || 'Something went wrong.'} Please try again.`,
+                    isStreaming: false,
+                  };
+                }
+                return next;
+              });
+              return; // finally still runs
+          }
+        }
+      }
+
+      if (!completedWithEmergency) {
+        setHistory((prev) => [
+          ...prev,
+          { role: 'user', content: text || '(image)' },
+          { role: 'assistant', content: finalContent },
+        ]);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.';
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: `Error: ${msg} Please try again.` },
-      ]);
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.role === 'assistant' && last.isStreaming) {
+          next[next.length - 1] = {
+            role: 'assistant',
+            content: `Error: ${msg} Please try again.`,
+            isStreaming: false,
+          };
+          return next;
+        }
+        return [...prev, { role: 'assistant', content: `Error: ${msg} Please try again.` }];
+      });
     } finally {
       setLoading(false);
     }
+  }
+
+  function stripMarkdown(text: string): string {
+    return text
+      .replace(/#{1,6}\s+/g, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '')
+      .replace(/^\s*\d+\.\s+/gm, '')
+      .replace(/\n{2,}/g, '\n\n')
+      .trim();
+  }
+
+  async function handleCopy(index: number, content: string) {
+    try {
+      await navigator.clipboard.writeText(stripMarkdown(content));
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch {
+      // clipboard not available
+    }
+  }
+
+  async function handleShare(content: string) {
+    const plain = stripMarkdown(content);
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: plain });
+        return;
+      } catch {
+        // user cancelled or share failed — fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(plain);
+    } catch {
+      // nothing we can do
+    }
+  }
+
+  async function sendMessage(e: FormEvent) {
+    e.preventDefault();
+    await sendText(input.trim(), pendingImage);
   }
 
   const canSend = (input.trim().length > 0 || pendingImage !== null) && !loading;
@@ -269,10 +451,46 @@ function ChatInterface() {
                     </div>
                   )}
                   <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="prose prose-sm max-w-none prose-headings:text-slate-800 prose-p:text-slate-700 prose-li:text-slate-700 prose-strong:text-slate-800">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
+                    {msg.isStreaming ? (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                        {msg.content}
+                        <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-slate-500 align-middle" />
+                      </p>
+                    ) : (
+                      <div className="prose prose-sm max-w-none prose-headings:text-slate-800 prose-p:text-slate-700 prose-li:text-slate-700 prose-strong:text-slate-800">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    )}
                   </div>
+                  {!msg.isStreaming && i > 0 && (
+                    <div className="flex items-center gap-1 pl-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(i, msg.content)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        {copiedIndex === i ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-teal-500" />
+                            <span className="text-teal-500">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleShare(msg.content)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                        <span>Share</span>
+                      </button>
+                    </div>
+                  )}
                   {msg.citations && msg.citations.length > 0 && (
                     <details className="text-xs text-slate-500">
                       <summary className="cursor-pointer select-none py-1 font-medium hover:text-slate-700">
@@ -300,7 +518,25 @@ function ChatInterface() {
             </div>
           ))}
 
-          {loading && (
+          {/* Suggested starter questions — visible only before the first user message */}
+          {!messages.some((m) => m.role === 'user') && SUGGESTED_QUESTIONS[intent] && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {SUGGESTED_QUESTIONS[intent].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => sendText(q)}
+                  disabled={loading}
+                  className="cursor-pointer rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm text-teal-700 transition hover:bg-teal-100 disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Dots only while waiting for the first stream chunk */}
+          {loading && !messages.some((m) => m.isStreaming) && (
             <div className="flex justify-start">
               <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm">
                 <span className="flex items-center gap-1">

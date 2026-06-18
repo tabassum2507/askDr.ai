@@ -1,72 +1,43 @@
-export interface DrugLookupResult {
-  name: string;
-  content: string;
-  source: string;
-}
+export async function lookupDrug(query: string): Promise<{ name: string; context: string } | null> {
+  try {
+    const encoded = encodeURIComponent(query);
+    const urls = [
+      `https://api.fda.gov/drug/label.json?search=openfda.generic_name:"${encoded}"&limit=1`,
+      `https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encoded}"&limit=1`,
+      `https://api.fda.gov/drug/label.json?search="${encoded}"&limit=1`,
+    ];
 
-const LABEL_FIELDS: [string, string][] = [
-  ['indications_and_usage',    'Indications and Usage'],
-  ['dosage_and_administration','Dosage and Administration'],
-  ['warnings',                 'Warnings'],
-  ['adverse_reactions',        'Adverse Reactions'],
-  ['contraindications',        'Contraindications'],
-  ['drug_interactions',        'Drug Interactions'],
-  ['description',              'Description'],
-  ['information_for_patients', 'Patient Information'],
-];
+    for (const url of urls) {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const label = json.results?.[0];
+      if (!label) continue;
 
-function extractLabel(result: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const [field, label] of LABEL_FIELDS) {
-    const raw = result[field];
-    if (!raw) continue;
-    const text = Array.isArray(raw) ? (raw as string[]).join(' ') : String(raw);
-    const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (cleaned.length > 20) parts.push(`**${label}:**\n${cleaned}`);
-  }
-  return parts.join('\n\n');
-}
+      const name = label.openfda?.generic_name?.[0] || label.openfda?.brand_name?.[0] || query;
+      const sections: [string, string][] = [
+        ['indications_and_usage', 'Used for'],
+        ['dosage_and_administration', 'Dosage'],
+        ['warnings', 'Warnings'],
+        ['adverse_reactions', 'Side effects'],
+        ['drug_interactions', 'Interactions'],
+        ['contraindications', 'Contraindications'],
+        ['description', 'Description'],
+        ['purpose', 'Purpose'],
+      ];
 
-export async function lookupDrug(query: string): Promise<DrugLookupResult | null> {
-  const term = query.slice(0, 200).trim();
-  const enc = encodeURIComponent(term);
+      const context = sections
+        .filter(([field]) => label[field])
+        .map(([field, sectionLabel]) => {
+          const text = Array.isArray(label[field]) ? label[field].join(' ') : String(label[field]);
+          return `${sectionLabel}: ${text.slice(0, 800)}`;
+        })
+        .join('\n\n');
 
-  const searches = [
-    `https://api.fda.gov/drug/label.json?search=openfda.generic_name:"${enc}"&limit=1`,
-    `https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${enc}"&limit=1`,
-    `https://api.fda.gov/drug/label.json?search=${enc}&limit=1`,
-  ];
-
-  for (const url of searches) {
-    let res: Response;
-    try {
-      res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    } catch {
-      continue;
+      if (context) return { name, context };
     }
-    if (!res.ok) continue;
-
-    let json: { results?: Record<string, unknown>[] };
-    try {
-      json = await res.json();
-    } catch {
-      continue;
-    }
-
-    const result = json.results?.[0];
-    if (!result) continue;
-
-    const openfda = result.openfda as Record<string, string[]> | undefined;
-    const name =
-      openfda?.generic_name?.[0] ??
-      openfda?.brand_name?.[0] ??
-      term;
-
-    const content = extractLabel(result);
-    if (!content) continue;
-
-    return { name, content, source: 'openFDA (live)' };
+    return null;
+  } catch {
+    return null;
   }
-
-  return null;
 }
