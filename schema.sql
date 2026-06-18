@@ -6,7 +6,7 @@ create table if not exists documents (
   id          bigserial primary key,
   content     text        not null,
   metadata    jsonb       not null default '{}',
-  embedding   vector(384) not null,
+  embedding   vector(768) not null,
   created_at  timestamptz not null default now()
 );
 
@@ -17,7 +17,7 @@ create index if not exists documents_embedding_hnsw_idx
 
 -- Category-filtered match function
 create or replace function match_documents_by_category (
-  query_embedding  vector(384),
+  query_embedding  vector(768),
   filter_category  text    default null,
   match_count      int     default 5,
   match_threshold  float   default 0.3
@@ -44,7 +44,7 @@ $$;
 
 -- Match function used by retrieve.ts
 create or replace function match_documents(
-  query_embedding  vector(384),
+  query_embedding  vector(768),
   match_count      int     default 5,
   match_threshold  float   default 0.3
 )

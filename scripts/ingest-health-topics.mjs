@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import { pipeline } from '@huggingface/transformers';
 import WebSocket from 'ws';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -110,19 +109,27 @@ const CATEGORIES = [
 
 // ── Embedding ─────────────────────────────────────────────────────────────────
 
-let extractor = null;
-
-async function getExtractor() {
-  if (!extractor) {
-    extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  }
-  return extractor;
-}
-
 async function embed(text) {
-  const pipe = await getExtractor();
-  const output = await pipe(text, { pooling: 'mean', normalize: true });
-  return Array.from(output.data);
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/text-embedding-004',
+        content: { parts: [{ text }] },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini embedding error ${res.status}: ${err}`);
+  }
+  const data = await res.json();
+  return data.embedding.values;
 }
 
 // ── Chunking ──────────────────────────────────────────────────────────────────
