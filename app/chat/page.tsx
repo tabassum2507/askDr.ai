@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, FormEvent, Suspense, ChangeEvent } from 'react';
 import { track } from '@/lib/analytics';
+import SymptomFlow from '@/components/SymptomFlow';
 import ReactMarkdown from 'react-markdown';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -20,6 +21,7 @@ import {
   Check,
   Share2,
   ShieldAlert,
+  ClipboardList,
   Plus,
 } from 'lucide-react';
 
@@ -89,6 +91,14 @@ const CATEGORIES = {
     iconBg: 'bg-red-50',
     welcome:
       'Enter the medicines you want to check above, or ask a free-text question below.',
+  },
+  'symptom-checker': {
+    title: 'Symptom Checker',
+    Icon: ClipboardList,
+    iconColor: 'text-blue-600',
+    iconBg: 'bg-blue-50',
+    welcome:
+      "Let's understand your symptoms. Use the guided form below, or type a question directly.",
   },
 } as const;
 
@@ -166,6 +176,11 @@ const SUGGESTED_QUESTIONS: Record<string, string[]> = {
     'Can I take ibuprofen with aspirin?',
     'Do metformin and atorvastatin interact?',
     'Check interactions between omeprazole and amoxicillin',
+  ],
+  'symptom-checker': [
+    'Should I see a doctor for this?',
+    'Any home remedies that might help?',
+    'Could this be something serious?',
   ],
 };
 
@@ -745,8 +760,13 @@ function ChatInterface() {
             </div>
           ))}
 
-          {/* Suggested starter questions — visible only before the first user message */}
-          {!messages.some((m) => m.role === 'user') && SUGGESTED_QUESTIONS[intent] && (
+          {/* Symptom Flow — shown before first user message */}
+          {intent === 'symptom-checker' && !messages.some((m) => m.role === 'user') && (
+            <SymptomFlow onComplete={(query) => sendText(query)} loading={loading} />
+          )}
+
+          {/* Suggested starter questions — all intents except symptom-checker, before first user message */}
+          {!messages.some((m) => m.role === 'user') && intent !== 'symptom-checker' && SUGGESTED_QUESTIONS[intent] && (
             <div className="flex flex-wrap gap-2 pt-1">
               {SUGGESTED_QUESTIONS[intent].map((q) => (
                 <button
@@ -755,6 +775,27 @@ function ChatInterface() {
                   onClick={() => { track('Suggested Question Clicked', { category: intent, question: q }); sendText(q); }}
                   disabled={loading}
                   className="cursor-pointer rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm text-teal-700 transition hover:bg-teal-100 disabled:opacity-50"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Symptom-checker follow-up questions — shown after the first response */}
+          {intent === 'symptom-checker' &&
+            messages.length > 1 &&
+            messages[messages.length - 1]?.role === 'assistant' &&
+            !messages[messages.length - 1]?.isStreaming &&
+            !loading && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {SUGGESTED_QUESTIONS['symptom-checker'].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => { track('Suggested Question Clicked', { category: intent, question: q }); sendText(q); }}
+                  disabled={loading}
+                  className="cursor-pointer rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
                 >
                   {q}
                 </button>
@@ -839,6 +880,8 @@ function ChatInterface() {
                   ? 'Ask about this medicine… (or leave blank)'
                   : intent === 'drug-interactions'
                   ? 'Or ask a free-text question about interactions…'
+                  : intent === 'symptom-checker'
+                  ? 'Or ask a follow-up question…'
                   : 'Ask a question…'
               }
               disabled={loading}

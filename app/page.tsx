@@ -14,6 +14,7 @@ import {
   Apple,
   Ribbon,
   ShieldAlert,
+  ClipboardList,
   Check,
   ArrowRight,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import {
   DietIllustration,
   CancerHealthIllustration,
   DrugInteractionsIllustration,
+  SymptomCheckerIllustration,
 } from '@/components/illustrations';
 
 // ─── category data ───────────────────────────────────────────────────────────
@@ -97,6 +99,15 @@ const categories = [
     centered: false,
   },
   {
+    slug: 'symptom-checker',
+    title: 'Symptom Checker',
+    description: 'Answer a few questions to understand your symptoms',
+    Icon: ClipboardList,
+    Illustration: SymptomCheckerIllustration,
+    feature: false,
+    centered: false,
+  },
+  {
     slug: 'drug-interactions',
     title: 'Drug Interactions',
     description: 'Check if your medicines interact with each other',
@@ -116,7 +127,7 @@ const categories = [
   },
 ] as const;
 
-const TRUST_ITEMS = ['openFDA drug labels', 'MedlinePlus guidelines', 'Evidence-based answers'];
+const TRUST_ITEMS = ['Evidence-based answers', 'Always free to use', 'No sign-up required'];
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
@@ -173,7 +184,7 @@ export default function Home() {
               <span className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-600">
                 <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
               </span>
-              Grounded in openFDA &amp; MedlinePlus
+              Trusted health information, simplified
             </div>
 
             <h1 className="font-heading text-4xl font-semibold leading-[1.12] tracking-tight text-[#134E4A] sm:text-5xl lg:text-[3.5rem]">
@@ -311,14 +322,33 @@ export default function Home() {
               </span>
             </div>
 
-            <div className="flex flex-col gap-0.5 text-xs text-slate-400 sm:items-end">
+            <div className="flex flex-col gap-1 text-xs text-slate-400 sm:items-end">
               <span>
                 For informational purposes only. Not medical advice.{' '}
                 <span className="font-medium text-slate-500">
                   Always consult a healthcare professional.
                 </span>
               </span>
-              <span className="text-slate-400">Built with openFDA + MedlinePlus data</span>
+              <span className="text-[11px] text-slate-400">
+                Built by{' '}
+                <a
+                  href="https://www.linkedin.com/in/tabassum-khanum/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 transition hover:text-teal-700 hover:underline"
+                >
+                  Tabassum Khanum
+                </a>
+                {' · '}
+                <a
+                  href="https://github.com/tabassumkhanum"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 transition hover:text-teal-700 hover:underline"
+                >
+                  GitHub
+                </a>
+              </span>
             </div>
           </div>
         </footer>

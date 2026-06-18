@@ -46,6 +46,7 @@ const INTENT_CATEGORY: Record<string, string> = {
   'diet':                'diet',
   'cancer-health':       'cancer-health',
   'drug-interactions':   'medicines',
+  'symptom-checker':     '',
 };
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
@@ -75,6 +76,19 @@ Rules:
 - Never recommend starting, stopping, or changing a medication.
 - Always end your answer with: "Please confirm this with your doctor or pharmacist before taking any action."
 - If the context does not contain enough information to answer, say: "I don't have enough information in my sources to answer that. Please consult your doctor."
+${FORMATTING}`;
+
+const SYMPTOM_CHECKER_SYSTEM_PROMPT = `You are a symptom information assistant. Based on the symptoms described and any medical sources provided, give helpful, structured guidance.
+
+Respond in this order:
+1. **Possible causes** — list 2–3 conditions these symptoms may be associated with, most common first. Always phrase as "these symptoms may be associated with" — never "you have".
+2. **Self-care suggestions** — practical steps that may help while the person monitors symptoms.
+3. **Red flags** — specific warning signs that mean they should seek medical attention promptly.
+
+Rules:
+- NEVER diagnose. Use phrases like "may be associated with" or "could indicate".
+- Be empathetic and clear.
+- Always end with: "Please consult a healthcare professional for a proper evaluation."
 ${FORMATTING}`;
 
 const DRUG_INTERACTION_SYSTEM_PROMPT = `You are a drug interaction specialist assistant. Answer the user's question about drug interactions using any relevant context provided.
@@ -258,6 +272,8 @@ export async function POST(req: NextRequest) {
       prep = await prepareContext(message, INTENT_CATEGORY[intent], history);
       if (intent === 'drug-interactions') {
         prep.groqMessages[0] = { role: 'system', content: DRUG_INTERACTION_SYSTEM_PROMPT };
+      } else if (intent === 'symptom-checker') {
+        prep.groqMessages[0] = { role: 'system', content: SYMPTOM_CHECKER_SYSTEM_PROMPT };
       }
     }
 

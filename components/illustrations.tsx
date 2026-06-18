@@ -198,6 +198,33 @@ export function DietIllustration({ className }: IllustrationProps) {
   );
 }
 
+export function SymptomCheckerIllustration({ className }: IllustrationProps) {
+  return (
+    <svg viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* Clipboard body */}
+      <rect x="48" y="26" width="100" height="120" rx="10" fill="#DBEAFE" />
+      <rect x="48" y="26" width="100" height="120" rx="10" stroke="#93C5FD" strokeWidth="1.5" />
+      {/* Clipboard clip */}
+      <rect x="74" y="18" width="52" height="18" rx="9" fill="#93C5FD" />
+      {/* Lines */}
+      <rect x="64" y="52" width="72" height="4" rx="2" fill="#BFDBFE" />
+      <rect x="64" y="64" width="58" height="4" rx="2" fill="#BFDBFE" />
+      <rect x="64" y="76" width="64" height="4" rx="2" fill="#BFDBFE" />
+      {/* Check items */}
+      <circle cx="72" cy="96" r="7" fill="#3B82F6" />
+      <path d="M68.5 96 L71 98.5 L75.5 93" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="84" y="92" width="38" height="4" rx="2" fill="#BFDBFE" />
+      <circle cx="72" cy="114" r="7" fill="#93C5FD" />
+      <rect x="84" y="110" width="28" height="4" rx="2" fill="#BFDBFE" />
+      {/* Magnifying glass overlay */}
+      <circle cx="138" cy="110" r="22" fill="white" opacity="0.85" />
+      <circle cx="134" cy="106" r="13" fill="#EFF6FF" stroke="#3B82F6" strokeWidth="2.5" />
+      <line x1="143" y1="115" x2="154" y2="126" stroke="#3B82F6" strokeWidth="3" strokeLinecap="round" />
+      <path d="M128 106 L132 110 L140 102" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function DrugInteractionsIllustration({ className }: IllustrationProps) {
   return (
     <svg viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
