@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   Activity,
   Leaf,
@@ -15,57 +13,18 @@ import {
   Ribbon,
   Check,
   ArrowRight,
-  type LucideProps,
 } from 'lucide-react';
-import type { ForwardRefExoticComponent, RefAttributes } from 'react';
-
-// ─── types ───────────────────────────────────────────────────────────────────
-
-type LucideIcon = ForwardRefExoticComponent<
-  Omit<LucideProps, 'ref'> & RefAttributes<SVGSVGElement>
->;
-
-interface IllustrationProps {
-  src: string;
-  alt: string;
-  width: number;
-  height: number;
-  className?: string;
-  FallbackIcon: LucideIcon;
-  fallbackClassName?: string;
-}
-
-// ─── illustration with graceful fallback ─────────────────────────────────────
-
-function IllustrationImage({
-  src,
-  alt,
-  width,
-  height,
-  className,
-  FallbackIcon,
-  fallbackClassName,
-}: IllustrationProps) {
-  const [error, setError] = useState(false);
-  if (error) {
-    return (
-      <FallbackIcon
-        className={fallbackClassName ?? 'h-16 w-16 text-teal-300'}
-        strokeWidth={1.25}
-      />
-    );
-  }
-  return (
-    <Image
-      src={src}
-      alt={alt}
-      width={width}
-      height={height}
-      className={className}
-      onError={() => setError(true)}
-    />
-  );
-}
+import {
+  HeroIllustration,
+  HomeRemediesIllustration,
+  MentalHealthIllustration,
+  ReportAssistanceIllustration,
+  MedicinesIllustration,
+  FemaleHealthIllustration,
+  BasicHealthIllustration,
+  DietIllustration,
+  CancerHealthIllustration,
+} from '@/components/illustrations';
 
 // ─── category data ───────────────────────────────────────────────────────────
 
@@ -75,7 +34,7 @@ const categories = [
     title: 'Home Remedies',
     description: 'Natural solutions for common everyday issues',
     Icon: Leaf,
-    illustration: '/illustrations/home-remedies.svg',
+    Illustration: HomeRemediesIllustration,
     feature: false,
     centered: false,
   },
@@ -84,7 +43,7 @@ const categories = [
     title: 'Mental Health',
     description: 'Support for emotional and psychological wellbeing',
     Icon: Brain,
-    illustration: '/illustrations/mental-health.svg',
+    Illustration: MentalHealthIllustration,
     feature: false,
     centered: false,
   },
@@ -93,7 +52,7 @@ const categories = [
     title: 'Report Assistance',
     description: 'Understand medical reports and lab results clearly',
     Icon: FileText,
-    illustration: '/illustrations/report.svg',
+    Illustration: ReportAssistanceIllustration,
     feature: true,
     centered: false,
   },
@@ -102,7 +61,7 @@ const categories = [
     title: 'Medicines',
     description: 'Dosage, interactions, and side effect information',
     Icon: Pill,
-    illustration: '/illustrations/medicines.svg',
+    Illustration: MedicinesIllustration,
     feature: true,
     centered: false,
   },
@@ -111,7 +70,7 @@ const categories = [
     title: 'Female Health',
     description: "Women's health, hormones, and reproductive info",
     Icon: Heart,
-    illustration: '/illustrations/female-health.svg',
+    Illustration: FemaleHealthIllustration,
     feature: false,
     centered: false,
   },
@@ -120,7 +79,7 @@ const categories = [
     title: 'Basic Health',
     description: 'General wellness and everyday health questions',
     Icon: Stethoscope,
-    illustration: '/illustrations/basic-health.svg',
+    Illustration: BasicHealthIllustration,
     feature: false,
     centered: false,
   },
@@ -129,7 +88,7 @@ const categories = [
     title: 'Diet & Nutrition',
     description: 'Guidance on food choices and healthy eating habits',
     Icon: Apple,
-    illustration: '/illustrations/diet.svg',
+    Illustration: DietIllustration,
     feature: false,
     centered: false,
   },
@@ -138,7 +97,7 @@ const categories = [
     title: 'Cancer Health',
     description: 'Cancer types, treatments, screening, and support resources',
     Icon: Ribbon,
-    illustration: '/illustrations/cancer-health.svg',
+    Illustration: CancerHealthIllustration,
     feature: false,
     centered: true,
   },
@@ -152,7 +111,7 @@ export default function Home() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#F0FDFA]">
 
-      {/* Grain texture — SVG feTurbulence at very low opacity */}
+      {/* Grain texture */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 z-0 opacity-[0.035]"
@@ -241,17 +200,8 @@ export default function Home() {
           {/* Right — hero illustration */}
           <div className="flex items-center justify-center lg:justify-end">
             <div className="relative flex h-72 w-72 items-center justify-center overflow-hidden rounded-3xl bg-white/50 shadow-xl ring-1 ring-teal-100 sm:h-80 sm:w-80 lg:h-[26rem] lg:w-[26rem]">
-              {/* Soft inner glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-teal-50/80 via-transparent to-emerald-50/60" />
-              <IllustrationImage
-                src="/illustrations/hero.svg"
-                alt="AI health companion illustration"
-                width={384}
-                height={384}
-                className="relative h-full w-full object-contain p-6"
-                FallbackIcon={Activity}
-                fallbackClassName="relative h-24 w-24 text-teal-200"
-              />
+              <HeroIllustration className="relative h-full w-full p-8" />
             </div>
           </div>
         </section>
@@ -267,14 +217,8 @@ export default function Home() {
             </p>
           </div>
 
-          {/*
-            Bento grid — 4 cols on lg:
-              Row 1: Home Remedies (1) | Mental Health (1) | Report Assistance (2)
-              Row 2: Medicines (2)     | Female Health (1) | Basic Health (1)
-              Row 3:              Diet & Nutrition (2, centered)
-          */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {categories.map(({ slug, title, description, Icon, illustration, feature, centered }) => {
+            {categories.map(({ slug, title, description, Icon, Illustration, feature, centered }) => {
               const colClass = feature
                 ? 'col-span-1 sm:col-span-2'
                 : centered
@@ -300,16 +244,10 @@ export default function Home() {
                       feature ? 'h-36' : 'h-24',
                     ].join(' ')}
                   >
-                    <IllustrationImage
-                      src={illustration}
-                      alt={`${title} illustration`}
-                      width={feature ? 220 : 120}
-                      height={feature ? 144 : 96}
-                      className="h-full w-full object-contain p-3 transition-transform duration-500 group-hover:scale-[1.06]"
-                      FallbackIcon={Icon}
-                      fallbackClassName={[
-                        'text-teal-300 transition-transform duration-500 group-hover:scale-110',
-                        feature ? 'h-20 w-20' : 'h-12 w-12',
+                    <Illustration
+                      className={[
+                        'transition-transform duration-500 group-hover:scale-[1.06]',
+                        feature ? 'h-32 w-full' : 'h-20 w-full',
                       ].join(' ')}
                     />
                   </div>
@@ -346,7 +284,6 @@ export default function Home() {
         {/* ── Footer ── */}
         <footer className="border-t border-teal-100/80 py-8">
           <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
-            {/* Logo */}
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-600">
                 <Activity className="h-3.5 w-3.5 text-white" strokeWidth={2.25} />
@@ -356,7 +293,6 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Disclaimer */}
             <div className="flex flex-col gap-0.5 text-xs text-slate-400 sm:items-end">
               <span>
                 For informational purposes only. Not medical advice.{' '}
