@@ -15,11 +15,9 @@ import {
   Ribbon,
   ShieldAlert,
   ClipboardList,
-  Check,
   ArrowRight,
 } from 'lucide-react';
 import {
-  HeroIllustration,
   HomeRemediesIllustration,
   MentalHealthIllustration,
   ReportAssistanceIllustration,
@@ -127,8 +125,6 @@ const categories = [
   },
 ] as const;
 
-const TRUST_ITEMS = ['Evidence-based answers', 'Always free to use', 'No sign-up required'];
-
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -137,99 +133,115 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#F0FDFA]">
+    <div className="relative min-h-screen overflow-hidden bg-white">
 
-      {/* Grain texture */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 opacity-[0.035]"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          backgroundSize: '300px 300px',
-          mixBlendMode: 'multiply',
-        }}
-      />
-
-      {/* Blobs */}
-      <div aria-hidden="true" className="pointer-events-none absolute -left-48 -top-48 z-0 h-[40rem] w-[40rem] rounded-full bg-teal-200/30 blur-[120px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -right-36 top-1/4 z-0 h-[32rem] w-[32rem] rounded-full bg-emerald-200/25 blur-[96px]" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 left-1/3 z-0 h-80 w-80 rounded-full bg-teal-100/50 blur-[80px]" />
+      {/* Background blobs */}
+      <div aria-hidden="true" className="pointer-events-none absolute -right-64 -top-64 z-0 h-[52rem] w-[52rem] rounded-full bg-teal-500/[0.07] blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 -left-40 z-0 h-96 w-96 rounded-full bg-emerald-400/[0.05] blur-3xl" />
 
       <div className="relative z-10 mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
 
-        {/* ── Logo bar ── */}
-        <nav className="flex items-center justify-between pb-4 pt-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 shadow-sm">
-              <Activity className="h-4.5 w-4.5 text-white" strokeWidth={2.25} />
-            </div>
-            <span className="font-heading text-xl font-semibold text-[#134E4A]">
-              askDr<span className="text-teal-600">.ai</span>
-            </span>
-          </div>
+        {/* ── Nav ── */}
+        <nav className="flex items-center justify-between py-6">
+          <span className="font-heading text-xl font-semibold text-[#134E4A]">
+            askDr<span className="text-teal-600">.ai</span>
+          </span>
           <Link
             href="/chat?intent=basic-health"
-            className="rounded-xl border border-teal-200 bg-white/70 px-4 py-2 text-sm font-medium text-teal-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-teal-300 hover:bg-white hover:shadow-md"
+            className="inline-flex items-center gap-1.5 rounded-full bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-700 active:scale-[0.97]"
           >
-            Open chat
+            Start a conversation
+            <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </nav>
 
         {/* ── Hero ── */}
-        <section className="grid grid-cols-1 items-center gap-10 py-12 lg:grid-cols-2 lg:gap-20 lg:py-20">
+        <section className="grid grid-cols-1 items-center gap-12 py-12 lg:grid-cols-[1fr_auto] lg:gap-20 lg:py-20">
 
           {/* Left — copy */}
-          <div className="flex flex-col gap-6">
-            <div className="inline-flex w-fit items-center gap-1.5 rounded-full border border-teal-200/80 bg-white/60 px-3 py-1 text-xs font-medium text-teal-700 shadow-sm backdrop-blur-sm">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-600">
-                <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
-              </span>
-              Trusted health information, simplified
+          <div className="flex max-w-xl flex-col gap-7">
+
+            {/* Eyebrow */}
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs font-medium text-green-700">Powered by verified medical sources</span>
             </div>
 
-            <h1 className="font-heading text-4xl font-semibold leading-[1.12] tracking-tight text-[#134E4A] sm:text-5xl lg:text-[3.5rem]">
-              Your AI health<br />
-              <em className="not-italic text-teal-600">companion</em>
+            {/* Headline */}
+            <h1 className="font-heading text-3xl font-semibold leading-[1.1] tracking-tight text-[#134E4A] sm:text-4xl lg:text-5xl">
+              Health answers you can<br className="hidden sm:block" /> actually trust
             </h1>
 
-            <p className="max-w-md text-base leading-relaxed text-slate-500 sm:text-lg">
-              Trusted answers, grounded in real medical sources —{' '}
-              <span className="font-medium text-slate-600">not guesswork.</span>
+            {/* Subtitle */}
+            <p className="text-lg leading-relaxed text-slate-500">
+              Ask about medicines, symptoms, nutrition, or mental health — every
+              answer is grounded in openFDA and MedlinePlus data, with sources
+              you can verify.
             </p>
 
-            {/* Trust strip */}
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {TRUST_ITEMS.map((item) => (
-                <span key={item} className="flex items-center gap-1.5 text-sm text-slate-500">
-                  <Check className="h-3.5 w-3.5 shrink-0 text-teal-500" strokeWidth={2.5} />
-                  {item}
-                </span>
-              ))}
-            </div>
-
             {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-3">
               <a
                 href="#categories"
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-6 py-3 text-sm font-semibold text-teal-900 shadow-sm transition-all duration-200 hover:bg-amber-500 hover:shadow-md active:scale-[0.97]"
+                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-teal-700 hover:shadow-md active:scale-[0.97]"
               >
-                Explore topics
+                Explore health topics
                 <ArrowRight className="h-4 w-4" />
               </a>
               <Link
                 href="/chat?intent=basic-health"
-                className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-white/70 px-6 py-3 text-sm font-medium text-teal-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-teal-300 hover:bg-white hover:shadow-md active:scale-[0.97]"
+                className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-white px-6 py-3 text-sm font-medium text-teal-700 shadow-sm transition-all hover:border-teal-300 hover:shadow-md active:scale-[0.97]"
               >
                 Ask anything
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
+
+            {/* Mini stats */}
+            <p className="text-sm text-slate-400">
+              8+ medicine databases&nbsp;&middot;&nbsp;7 health categories&nbsp;&middot;&nbsp;Evidence-based answers
+            </p>
           </div>
 
-          {/* Right — hero illustration */}
-          <div className="flex items-center justify-center lg:justify-end">
-            <div className="relative flex h-72 w-72 items-center justify-center overflow-hidden rounded-3xl bg-white/50 shadow-xl ring-1 ring-teal-100 sm:h-80 sm:w-80 lg:h-[26rem] lg:w-[26rem]">
-              <div className="absolute inset-0 bg-gradient-to-br from-teal-50/80 via-transparent to-emerald-50/60" />
-              <HeroIllustration className="relative h-full w-full p-8" />
+          {/* Right — mock chat card, desktop only */}
+          <div className="hidden lg:block">
+            <div className="w-[22rem] rotate-1 rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-100/80">
+
+              {/* Card header */}
+              <div className="mb-4 flex items-center gap-2 border-b border-slate-50 pb-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-600">
+                  <Activity className="h-3.5 w-3.5 text-white" strokeWidth={2.25} />
+                </div>
+                <span className="text-sm font-semibold text-slate-700">askDr.ai</span>
+                <span className="ml-auto flex items-center gap-1.5 text-[11px] font-medium text-green-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                  Online
+                </span>
+              </div>
+
+              {/* User bubble */}
+              <div className="mb-3 flex justify-end">
+                <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-slate-800 px-3.5 py-2.5 text-xs leading-relaxed text-white">
+                  What are the side effects of ibuprofen?
+                </div>
+              </div>
+
+              {/* Assistant bubble */}
+              <div className="mb-3 flex justify-start">
+                <div className="max-w-[90%] rounded-2xl rounded-tl-sm border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-700">
+                  Common side effects include{' '}
+                  <span className="font-semibold text-slate-800">stomach pain, nausea, and dizziness</span>
+                  . According to the FDA drug label, serious side effects may include kidney problems and...
+                </div>
+              </div>
+
+              {/* Sources tag */}
+              <div className="flex items-center justify-between">
+                <span className="rounded-md bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-600 ring-1 ring-teal-100">
+                  Sources (3)
+                </span>
+                <span className="text-[10px] text-slate-300">Just now</span>
+              </div>
             </div>
           </div>
         </section>
