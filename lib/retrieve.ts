@@ -38,8 +38,16 @@ export async function retrieve(
       match_count: matchCount,
       match_threshold: 0.3,
     });
-    if (error) throw new Error(`Supabase RPC error: ${error.message}`);
-    return (data ?? []) as DocumentMatch[];
+    // If the category function doesn't exist yet, fall back to unfiltered search
+    if (error) {
+      if (error.message.includes('Could not find the function')) {
+        console.warn('match_documents_by_category not found — falling back to match_documents. Run schema.sql in Supabase to fix this.');
+      } else {
+        throw new Error(`Supabase RPC error: ${error.message}`);
+      }
+    } else {
+      return (data ?? []) as DocumentMatch[];
+    }
   }
 
   const { data, error } = await supabase.rpc('match_documents', {

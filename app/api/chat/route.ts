@@ -96,7 +96,10 @@ async function ragOrFallback(
 ): Promise<RagResult> {
   const docs = await retrieve(userMessage, 5, category);
 
-  if (docs.length > 0) {
+  // Only use RAG if the best match is genuinely relevant (≥ 0.5 similarity).
+  // Below this, the retrieved chunks are about unrelated topics and the LLM
+  // will just say "I don't have enough info" — so fall through to general LLM.
+  if (docs.length > 0 && docs[0].similarity >= 0.5) {
     const contextBlock = docs
       .map((d, i) => {
         const label = d.metadata.drug
