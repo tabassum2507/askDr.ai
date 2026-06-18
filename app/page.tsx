@@ -13,6 +13,7 @@ import {
   Stethoscope,
   Apple,
   Ribbon,
+  ShieldAlert,
   Check,
   ArrowRight,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
   BasicHealthIllustration,
   DietIllustration,
   CancerHealthIllustration,
+  DrugInteractionsIllustration,
 } from '@/components/illustrations';
 
 // ─── category data ───────────────────────────────────────────────────────────
@@ -91,6 +93,15 @@ const categories = [
     description: 'Guidance on food choices and healthy eating habits',
     Icon: Apple,
     Illustration: DietIllustration,
+    feature: false,
+    centered: false,
+  },
+  {
+    slug: 'drug-interactions',
+    title: 'Drug Interactions',
+    description: 'Check if your medicines interact with each other',
+    Icon: ShieldAlert,
+    Illustration: DrugInteractionsIllustration,
     feature: false,
     centered: false,
   },

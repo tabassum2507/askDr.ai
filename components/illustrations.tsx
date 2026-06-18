@@ -198,6 +198,32 @@ export function DietIllustration({ className }: IllustrationProps) {
   );
 }
 
+export function DrugInteractionsIllustration({ className }: IllustrationProps) {
+  return (
+    <svg viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* Shield background */}
+      <path d="M100 18 L148 42 L148 96 Q148 136 100 152 Q52 136 52 96 L52 42 Z" fill="#FEE2E2" />
+      <path d="M100 30 L138 50 L138 94 Q138 124 100 138 Q62 124 62 94 L62 50 Z" fill="#FFF1F2" />
+      {/* Pill 1 — tilted left */}
+      <g transform="rotate(-32 100 84)">
+        <rect x="72" y="75" width="56" height="18" rx="9" fill="#FECDD3" />
+        <rect x="72" y="75" width="28" height="18" rx="9" fill="#F43F5E" />
+        <line x1="100" y1="75" x2="100" y2="93" stroke="white" strokeWidth="1.5" />
+      </g>
+      {/* Pill 2 — tilted right */}
+      <g transform="rotate(32 100 84)">
+        <rect x="72" y="75" width="56" height="18" rx="9" fill="#FECDD3" opacity="0.9" />
+        <rect x="72" y="75" width="28" height="18" rx="9" fill="#FB7185" opacity="0.9" />
+        <line x1="100" y1="75" x2="100" y2="93" stroke="white" strokeWidth="1.5" opacity="0.9" />
+      </g>
+      {/* Warning badge */}
+      <circle cx="100" cy="120" r="11" fill="#F43F5E" />
+      <rect x="98.5" y="113" width="3" height="7" rx="1.5" fill="white" />
+      <circle cx="100" cy="123.5" r="1.8" fill="white" />
+    </svg>
+  );
+}
+
 export function CancerHealthIllustration({ className }: IllustrationProps) {
   return (
     <svg viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">

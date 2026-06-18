@@ -37,14 +37,15 @@ function isEmergency(message: string): boolean {
 // ── Intent → category map ─────────────────────────────────────────────────────
 
 const INTENT_CATEGORY: Record<string, string> = {
-  'medicines':          'medicines',
-  'home-remedies':      'home-remedies',
-  'mental-health':      'mental-health',
-  'report-assistance':  'report-assistance',
-  'female-health':      'female-health',
-  'basic-health':       'basic-health',
-  'diet':               'diet',
-  'cancer-health':      'cancer-health',
+  'medicines':           'medicines',
+  'home-remedies':       'home-remedies',
+  'mental-health':       'mental-health',
+  'report-assistance':   'report-assistance',
+  'female-health':       'female-health',
+  'basic-health':        'basic-health',
+  'diet':                'diet',
+  'cancer-health':       'cancer-health',
+  'drug-interactions':   'medicines',
 };
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
@@ -74,6 +75,14 @@ Rules:
 - Never recommend starting, stopping, or changing a medication.
 - Always end your answer with: "Please confirm this with your doctor or pharmacist before taking any action."
 - If the context does not contain enough information to answer, say: "I don't have enough information in my sources to answer that. Please consult your doctor."
+${FORMATTING}`;
+
+const DRUG_INTERACTION_SYSTEM_PROMPT = `You are a drug interaction specialist assistant. Answer the user's question about drug interactions using any relevant context provided.
+
+Rules:
+- Focus specifically on drug-drug interactions, their mechanisms, and clinical significance.
+- Never recommend starting, stopping, or changing a medication.
+- Always end your answer with: "Please consult your doctor or pharmacist before combining medications."
 ${FORMATTING}`;
 
 const OPENFDA_SYSTEM_PROMPT = `You are a health information assistant. Answer the user's question using ONLY the official drug label information provided in the message.
@@ -247,6 +256,9 @@ export async function POST(req: NextRequest) {
       prep = { ...prep, extractedMedicine };
     } else {
       prep = await prepareContext(message, INTENT_CATEGORY[intent], history);
+      if (intent === 'drug-interactions') {
+        prep.groqMessages[0] = { role: 'system', content: DRUG_INTERACTION_SYSTEM_PROMPT };
+      }
     }
 
     const groqStream = await groq.chat.completions.create({

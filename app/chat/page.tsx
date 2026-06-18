@@ -19,6 +19,8 @@ import {
   Copy,
   Check,
   Share2,
+  ShieldAlert,
+  Plus,
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -80,6 +82,14 @@ const CATEGORIES = {
     welcome:
       'I can provide information about cancer types, treatments, screening, and support resources. What would you like to know?',
   },
+  'drug-interactions': {
+    title: 'Drug Interactions',
+    Icon: ShieldAlert,
+    iconColor: 'text-red-600',
+    iconBg: 'bg-red-50',
+    welcome:
+      'Enter the medicines you want to check above, or ask a free-text question below.',
+  },
 } as const;
 
 type IntentKey = keyof typeof CATEGORIES;
@@ -105,6 +115,8 @@ interface Message {
   imagePreview?: string;
   extractedMedicine?: string;
   isStreaming?: boolean;
+  interactionMedicines?: string[];
+  interactionSeverity?: 'major' | 'moderate' | 'minor' | 'none' | 'unknown';
 }
 
 const MAX_IMAGE_MB = 5;
@@ -150,6 +162,11 @@ const SUGGESTED_QUESTIONS: Record<string, string[]> = {
     'How often should I get screened?',
     'What is chemotherapy?',
   ],
+  'drug-interactions': [
+    'Can I take ibuprofen with aspirin?',
+    'Do metformin and atorvastatin interact?',
+    'Check interactions between omeprazole and amoxicillin',
+  ],
 };
 
 function ChatInterface() {
@@ -171,6 +188,7 @@ function ChatInterface() {
   } | null>(null);
   const [imageError, setImageError] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [drugInputs, setDrugInputs] = useState<string[]>(['', '']);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -409,6 +427,47 @@ function ChatInterface() {
     }
   }
 
+  async function checkInteractions() {
+    const medicines = drugInputs.map((d) => d.trim()).filter(Boolean);
+    if (medicines.length < 2 || loading) return;
+
+    setLoading(true);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: `Check interactions: ${medicines.join(', ')}` },
+    ]);
+
+    try {
+      const res = await fetch('/api/interactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ medicines }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed with status ${res.status}`);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: data.answer,
+          citations: data.citations ?? [],
+          interactionMedicines: data.medicines,
+          interactionSeverity: data.severity,
+        },
+      ]);
+      setDrugInputs(['', '']);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong.';
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Error: ${msg} Please try again.` },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function sendMessage(e: FormEvent) {
     e.preventDefault();
     await sendText(input.trim(), pendingImage);
@@ -438,6 +497,54 @@ function ChatInterface() {
         </div>
       </header>
 
+      {/* Drug Interaction Checker Panel */}
+      {intent === 'drug-interactions' && (
+        <div className="flex-none border-b border-red-100 bg-red-50 px-4 py-4">
+          <div className="mx-auto max-w-2xl">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-500">
+              Drug Interaction Checker
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {drugInputs.map((val, idx) => (
+                <input
+                  key={idx}
+                  type="text"
+                  value={val}
+                  onChange={(e) => {
+                    const next = [...drugInputs];
+                    next[idx] = e.target.value;
+                    setDrugInputs(next);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') checkInteractions(); }}
+                  placeholder={`e.g. ${['ibuprofen', 'aspirin', 'metformin'][idx] ?? 'medicine'}`}
+                  disabled={loading}
+                  className="w-40 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50"
+                />
+              ))}
+              {drugInputs.length < 4 && (
+                <button
+                  type="button"
+                  onClick={() => setDrugInputs([...drugInputs, ''])}
+                  disabled={loading}
+                  className="flex items-center gap-1 rounded-xl border border-dashed border-red-300 bg-white px-3 py-2 text-sm text-red-400 transition hover:border-red-400 hover:text-red-500 disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={checkInteractions}
+              disabled={drugInputs.filter((d) => d.trim()).length < 2 || loading}
+              className="mt-3 rounded-xl bg-red-600 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loading ? 'Checking…' : 'Check Interactions'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <main className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -465,6 +572,101 @@ function ChatInterface() {
                 <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-4">
                   <p className="mb-1 text-sm font-semibold text-red-700">Emergency</p>
                   <p className="text-sm leading-relaxed text-red-800">{msg.content}</p>
+                </div>
+              ) : msg.interactionMedicines ? (
+                <div className="flex w-full flex-col gap-3">
+                  {/* Medicine tags + severity badge */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {msg.interactionMedicines.map((med) => (
+                      <span
+                        key={med}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium capitalize text-slate-700 ring-1 ring-slate-200"
+                      >
+                        {med}
+                      </span>
+                    ))}
+                    {msg.interactionSeverity && (
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          msg.interactionSeverity === 'major'
+                            ? 'bg-red-100 text-red-700 ring-1 ring-red-200'
+                            : msg.interactionSeverity === 'moderate'
+                            ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+                            : msg.interactionSeverity === 'minor'
+                            ? 'bg-green-100 text-green-700 ring-1 ring-green-200'
+                            : msg.interactionSeverity === 'none'
+                            ? 'bg-teal-100 text-teal-700 ring-1 ring-teal-200'
+                            : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200'
+                        }`}
+                      >
+                        {msg.interactionSeverity === 'major'
+                          ? 'Major interaction'
+                          : msg.interactionSeverity === 'moderate'
+                          ? 'Moderate interaction'
+                          : msg.interactionSeverity === 'minor'
+                          ? 'Minor interaction'
+                          : msg.interactionSeverity === 'none'
+                          ? 'No known interaction'
+                          : 'Severity unknown'}
+                      </span>
+                    )}
+                  </div>
+                  {/* Answer bubble */}
+                  <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div className="prose prose-sm max-w-none prose-headings:text-slate-800 prose-p:text-slate-700 prose-li:text-slate-700 prose-strong:text-slate-800">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                  {/* Copy / Share */}
+                  {i > 0 && (
+                    <div className="flex items-center gap-1 pl-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(i, msg.content)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        {copiedIndex === i ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-teal-500" />
+                            <span className="text-teal-500">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleShare(msg.content)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                        <span>Share</span>
+                      </button>
+                    </div>
+                  )}
+                  {/* Citations */}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <details className="text-xs text-slate-500">
+                      <summary className="cursor-pointer select-none py-1 font-medium hover:text-slate-700">
+                        Sources ({msg.citations.length})
+                      </summary>
+                      <div className="mt-2 flex flex-col gap-1.5 border-l-2 border-slate-200 pl-3">
+                        {msg.citations.map((c, j) => (
+                          <div key={j} className="flex items-start gap-1.5">
+                            <span className="mt-0.5 shrink-0 text-slate-400">{j + 1}.</span>
+                            <span>
+                              <span className="font-medium capitalize text-slate-700">{c.drug}</span>
+                              {' — '}
+                              <span className="capitalize">{c.section.replace(/_/g, ' ')}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               ) : (
                 <div className="flex max-w-[80%] flex-col gap-2">
@@ -635,6 +837,8 @@ function ChatInterface() {
               placeholder={
                 pendingImage
                   ? 'Ask about this medicine… (or leave blank)'
+                  : intent === 'drug-interactions'
+                  ? 'Or ask a free-text question about interactions…'
                   : 'Ask a question…'
               }
               disabled={loading}
