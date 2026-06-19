@@ -1,6 +1,6 @@
 export const runtime = 'nodejs';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import { retrieve } from '@/lib/retrieve';
 import { lookupDrug } from '@/lib/openfda-lookup';
@@ -17,8 +17,12 @@ const RED_FLAG_PATTERNS = [
   /difficulty\s*breath/i,
   /suicid/i,
   /kill\s*(my)?self/i,
-  /want\s*to\s*die/i,
+  /want to (die|end my life|kill myself|hurt myself|harm myself)/i,
   /overdos/i,
+  /took too many (pills|tablets|medication)/i,
+  /how (many|much) .* to overdose/i,
+  /lethal dose/i,
+  /how (many|much) .* (pills|tablets) (to|will|can) (kill|die|harm)/i,
   /unconscious/i,
   /not\s*breathing/i,
   /heart\s*attack/i,
@@ -32,6 +36,33 @@ const EMERGENCY_TEXT =
 
 function isEmergency(message: string): boolean {
   return RED_FLAG_PATTERNS.some((p) => p.test(message));
+}
+
+// Patterns that trigger helpline info appended to the response (not blocked)
+const HELPLINE_PATTERNS = [
+  /suicide\s*hotline/i,
+  /crisis\s*line/i,
+];
+
+const HELPLINE_TEXT =
+  '\n\n---\nIf you or someone you know is struggling, please reach out:\n- **Vandrevala Foundation (India):** 1860-2662-345 (24/7)\n- **iCall:** 9152987821';
+
+// Patterns that trigger a dosage disclaimer appended to the response
+const DOSAGE_WARNING_PATTERNS = [
+  /take\s+\d+\s+(pill|tablet|capsule|mg|ml)/i,
+  /you should take/i,
+  /i recommend taking/i,
+];
+
+const DOSAGE_WARNING =
+  '\n\n⚠️ This is general information from official drug labels, not a personal recommendation. Always consult your doctor before taking any medication.';
+
+function needsHelpline(message: string): boolean {
+  return HELPLINE_PATTERNS.some((p) => p.test(message));
+}
+
+function needsDosageWarning(response: string): boolean {
+  return DOSAGE_WARNING_PATTERNS.some((p) => p.test(response));
 }
 
 // ── Intent → category map ─────────────────────────────────────────────────────
@@ -58,6 +89,12 @@ Formatting:
 - Keep paragraphs short — max 2-3 sentences each.
 - Add a blank line between sections.`;
 
+const SAFETY_RULES = `
+Safety rules:
+- When providing dosage information from drug labels, ALWAYS preface it with: "The standard dosage listed on the official label is [X]. However, the right dose for you depends on your age, weight, medical history, and other medications. Never adjust your dose without consulting your doctor."
+- If someone asks what medicine to take for a condition, provide information about commonly used medicines for that condition from the context, but ALWAYS say: "I cannot recommend a specific medicine for you. Please consult a doctor who can consider your complete medical history."
+- Never provide information on how to harm oneself with medicines. If a query seems to be asking about intentional misuse, respond with: "I'm concerned about this question. If you or someone you know is in crisis, please contact a helpline: Vandrevala Foundation (India): 1860-2662-345 or iCall: 9152987821."`;
+
 const GENERAL_SYSTEM_PROMPT = `You are a general health information assistant. You provide helpful, general wellness information.
 
 Rules:
@@ -67,6 +104,7 @@ Rules:
 - For mental health queries, always include a note about reaching out to a mental health professional or helpline.
 - Be empathetic, clear, and concise.
 - End every response with: "Please consult a healthcare professional for personalized advice."
+${SAFETY_RULES}
 ${FORMATTING}`;
 
 const RAG_SYSTEM_PROMPT = `You are a health information assistant. Answer the user's question using ONLY the context provided in the message. Do not use outside knowledge.
@@ -76,6 +114,7 @@ Rules:
 - Never recommend starting, stopping, or changing a medication.
 - Always end your answer with: "Please confirm this with your doctor or pharmacist before taking any action."
 - If the context does not contain enough information to answer, say: "I don't have enough information in my sources to answer that. Please consult your doctor."
+${SAFETY_RULES}
 ${FORMATTING}`;
 
 const SYMPTOM_CHECKER_SYSTEM_PROMPT = `You are a symptom information assistant. Based on the symptoms described and any medical sources provided, give helpful, structured guidance.
@@ -89,6 +128,7 @@ Rules:
 - NEVER diagnose. Use phrases like "may be associated with" or "could indicate".
 - Be empathetic and clear.
 - Always end with: "Please consult a healthcare professional for a proper evaluation."
+${SAFETY_RULES}
 ${FORMATTING}`;
 
 const DRUG_INTERACTION_SYSTEM_PROMPT = `You are a drug interaction specialist assistant. Answer the user's question about drug interactions using any relevant context provided.
@@ -97,6 +137,7 @@ Rules:
 - Focus specifically on drug-drug interactions, their mechanisms, and clinical significance.
 - Never recommend starting, stopping, or changing a medication.
 - Always end your answer with: "Please consult your doctor or pharmacist before combining medications."
+${SAFETY_RULES}
 ${FORMATTING}`;
 
 const OPENFDA_SYSTEM_PROMPT = `You are a health information assistant. Answer the user's question using ONLY the official drug label information provided in the message.
@@ -106,6 +147,7 @@ Rules:
 - Never suggest someone start, stop, or change a medication.
 - Always end your answer with: "Please consult your doctor before taking any medication."
 - If the label does not contain enough information to answer, say so clearly.
+${SAFETY_RULES}
 ${FORMATTING}`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -214,7 +256,7 @@ function streamStaticText(
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const reqBody = await req.json();
     const message: string = reqBody?.message ?? '';
@@ -229,6 +271,8 @@ export async function POST(req: NextRequest) {
     if (isEmergency(message)) {
       return streamStaticText(EMERGENCY_TEXT, [], 'emergency', { emergency: true });
     }
+
+    const appendHelpline = needsHelpline(message);
 
     let prep: GroqCallPrep;
 
@@ -297,11 +341,21 @@ export async function POST(req: NextRequest) {
               }) + '\n'
             ));
 
+            let fullResponse = '';
             for await (const chunk of groqStream) {
               const text = chunk.choices[0]?.delta?.content ?? '';
               if (text) {
+                fullResponse += text;
                 controller.enqueue(enc.encode(JSON.stringify({ type: 'text', text }) + '\n'));
               }
+            }
+
+            if (needsDosageWarning(fullResponse)) {
+              controller.enqueue(enc.encode(JSON.stringify({ type: 'text', text: DOSAGE_WARNING }) + '\n'));
+            }
+
+            if (appendHelpline) {
+              controller.enqueue(enc.encode(JSON.stringify({ type: 'text', text: HELPLINE_TEXT }) + '\n'));
             }
 
             controller.enqueue(enc.encode(JSON.stringify({ type: 'done' }) + '\n'));
@@ -315,9 +369,11 @@ export async function POST(req: NextRequest) {
       }),
       { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
     );
-  } catch (err) {
-    console.error('Chat API error:', err);
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    console.error('Chat API error:', error);
+    return NextResponse.json(
+      { answer: 'Something went wrong. Please try again.', citations: [] },
+      { status: 500 }
+    );
   }
 }

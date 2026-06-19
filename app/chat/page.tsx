@@ -121,6 +121,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   citations?: Citation[];
+  source?: string;
   emergency?: boolean;
   imagePreview?: string;
   extractedMedicine?: string;
@@ -183,6 +184,57 @@ const SUGGESTED_QUESTIONS: Record<string, string[]> = {
     'Could this be something serious?',
   ],
 };
+
+function CitationsSection({ citations, source }: { citations: Citation[]; source?: string }) {
+  const [open, setOpen] = useState(false);
+
+  if (source === 'general') {
+    return (
+      <p className="pl-1 text-[11px] text-slate-400">Based on general health knowledge</p>
+    );
+  }
+
+  if (!citations.length) return null;
+
+  return (
+    <div className="pl-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-xs font-medium text-teal-600 transition-colors hover:text-teal-700"
+      >
+        <span
+          className="inline-block text-[10px] transition-transform duration-150"
+          style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+        >
+          ▶
+        </span>
+        Sources ({citations.length})
+      </button>
+
+      {open && (
+        <div className="mt-2 flex flex-col gap-2 border-l-2 border-teal-100 pl-3">
+          {citations.map((c, j) => (
+            <div key={j} className="text-[11px] leading-relaxed">
+              <span className="font-medium capitalize text-slate-700">{c.drug}</span>
+              {c.section && (
+                <span className="text-slate-500">
+                  {' — '}
+                  <span className="capitalize">{c.section.replace(/_/g, ' ')}</span>
+                </span>
+              )}
+              <div className="mt-0.5 flex items-center gap-1.5 text-slate-400">
+                <span>{c.source}</span>
+                <span>·</span>
+                <span>{Math.round(c.similarity * 100)}% match</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ChatInterface() {
   const router = useRouter();
@@ -312,6 +364,7 @@ function ChatInterface() {
                   next[next.length - 1] = {
                     ...last,
                     citations: citationsArr,
+                    source: capturedSource,
                     extractedMedicine: parsed.extractedMedicine as string | undefined,
                   };
                 }
@@ -467,6 +520,7 @@ function ChatInterface() {
           role: 'assistant',
           content: data.answer,
           citations: data.citations ?? [],
+          source: 'rag',
           interactionMedicines: data.medicines,
           interactionSeverity: data.severity,
         },
@@ -662,26 +716,7 @@ function ChatInterface() {
                       </button>
                     </div>
                   )}
-                  {/* Citations */}
-                  {msg.citations && msg.citations.length > 0 && (
-                    <details className="text-xs text-slate-500">
-                      <summary className="cursor-pointer select-none py-1 font-medium hover:text-slate-700">
-                        Sources ({msg.citations.length})
-                      </summary>
-                      <div className="mt-2 flex flex-col gap-1.5 border-l-2 border-slate-200 pl-3">
-                        {msg.citations.map((c, j) => (
-                          <div key={j} className="flex items-start gap-1.5">
-                            <span className="mt-0.5 shrink-0 text-slate-400">{j + 1}.</span>
-                            <span>
-                              <span className="font-medium capitalize text-slate-700">{c.drug}</span>
-                              {' — '}
-                              <span className="capitalize">{c.section.replace(/_/g, ' ')}</span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
+                  <CitationsSection citations={msg.citations ?? []} source={msg.source} />
                 </div>
               ) : (
                 <div className="flex max-w-[80%] flex-col gap-2">
@@ -733,27 +768,8 @@ function ChatInterface() {
                       </button>
                     </div>
                   )}
-                  {msg.citations && msg.citations.length > 0 && (
-                    <details className="text-xs text-slate-500">
-                      <summary className="cursor-pointer select-none py-1 font-medium hover:text-slate-700">
-                        Sources ({msg.citations.length})
-                      </summary>
-                      <div className="mt-2 flex flex-col gap-1.5 border-l-2 border-slate-200 pl-3">
-                        {msg.citations.map((c, j) => (
-                          <div key={j} className="flex items-start gap-1.5">
-                            <span className="mt-0.5 shrink-0 text-slate-400">{j + 1}.</span>
-                            <span>
-                              <span className="font-medium capitalize text-slate-700">{c.drug}</span>
-                              {' — '}
-                              <span className="capitalize">{c.section.replace(/_/g, ' ')}</span>
-                              <span className="ml-2 text-slate-400">
-                                {Math.round(c.similarity * 100)}% match
-                              </span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
+                  {!msg.isStreaming && i > 0 && (
+                    <CitationsSection citations={msg.citations ?? []} source={msg.source} />
                   )}
                 </div>
               )}
